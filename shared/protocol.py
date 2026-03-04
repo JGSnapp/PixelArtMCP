@@ -4,7 +4,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any
 
-from .color import PixelColor, TRANSPARENT
+from shared.color import PixelColor, TRANSPARENT
 
 MAX_UNDO = 50
 
@@ -56,7 +56,7 @@ class Frame:
 
     @classmethod
     def from_dict(cls, d: dict, width: int, height: int) -> "Frame":
-        from .color import parse_color
+        from shared.color import parse_color
         pixels = []
         for row in d["pixels"]:
             pixels.append([parse_color(c) or TRANSPARENT for c in row])
@@ -126,7 +126,7 @@ class Project:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Project":
-        from .color import parse_color
+        from shared.color import parse_color
         width, height = d["width"], d["height"]
         frames = [Frame.from_dict(fd, width, height) for fd in d["frames"]]
         palette = [parse_color(c) or TRANSPARENT for c in d.get("palette", [])]

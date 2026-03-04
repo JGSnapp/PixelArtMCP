@@ -1,7 +1,20 @@
 """Drawing primitives operating on Frame objects."""
 from __future__ import annotations
-from ..shared.protocol import Frame
-from ..shared.color import PixelColor
+from shared.protocol import Frame
+from shared.color import PixelColor
+
+
+def _lerp_channel(a: int, b: int, t: float) -> int:
+    return max(0, min(255, round(a + (b - a) * t)))
+
+
+def _lerp_color(c1: PixelColor, c2: PixelColor, t: float) -> PixelColor:
+    return PixelColor(
+        _lerp_channel(c1.r, c2.r, t),
+        _lerp_channel(c1.g, c2.g, t),
+        _lerp_channel(c1.b, c2.b, t),
+        _lerp_channel(c1.a, c2.a, t),
+    )
 
 
 def set_pixel(frame: Frame, x: int, y: int, color: PixelColor) -> None:
@@ -111,3 +124,53 @@ def fill_circle(frame: Frame, cx: int, cy: int, r: int, color: PixelColor) -> No
         for x in range(max(0, cx - r), min(frame.width, cx + r + 1)):
             if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
                 frame.pixels[y][x] = color
+
+
+def gradient_rect(
+    frame: Frame,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    start_color: PixelColor,
+    end_color: PixelColor,
+    direction: str = "horizontal",
+) -> None:
+    x2 = min(x + w, frame.width)
+    y2 = min(y + h, frame.height)
+    x1 = max(0, x)
+    y1 = max(0, y)
+    if x1 >= x2 or y1 >= y2:
+        return
+
+    direction = direction.lower()
+    width = max(1, x2 - x1 - 1)
+    height = max(1, y2 - y1 - 1)
+
+    for py in range(y1, y2):
+        for px in range(x1, x2):
+            if direction == "vertical":
+                t = (py - y1) / height
+            elif direction == "diagonal":
+                t = ((px - x1) / width + (py - y1) / height) / 2
+            else:
+                t = (px - x1) / width
+            frame.pixels[py][px] = _lerp_color(start_color, end_color, t)
+
+
+def paste_rgba_image(frame: Frame, image, dest_x: int, dest_y: int) -> int:
+    """Paste PIL RGBA image into frame, alpha-blended. Returns changed pixel count."""
+    changed = 0
+    src = image.convert("RGBA")
+    for sy in range(src.height):
+        for sx in range(src.width):
+            dx = dest_x + sx
+            dy = dest_y + sy
+            if not (0 <= dx < frame.width and 0 <= dy < frame.height):
+                continue
+            r, g, b, a = src.getpixel((sx, sy))
+            if a == 0:
+                continue
+            frame.pixels[dy][dx] = PixelColor(r, g, b, a)
+            changed += 1
+    return changed

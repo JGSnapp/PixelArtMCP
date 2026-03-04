@@ -6,9 +6,9 @@ import socketserver
 import threading
 from typing import TYPE_CHECKING
 
-from ..shared import port_file
-from .canvas import CanvasState
-from . import commands
+from shared import port_file
+from server.canvas import CanvasState
+from server import commands
 
 # Shared shutdown event
 _shutdown_event = threading.Event()
@@ -30,7 +30,7 @@ class _Handler(socketserver.StreamRequestHandler):
             args = data.get("args", [])
             frame_override = data.get("frame")  # None or int
 
-            response = commands.dispatch(self.server.canvas_state, cmd, args, frame_override)
+            response = commands.dispatch(self.server.canvas_state, cmd, args, frame_override, actor="tcp")
 
             # If stop command, signal shutdown after sending response
             if cmd == "stop":

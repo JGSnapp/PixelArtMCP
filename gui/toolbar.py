@@ -4,8 +4,8 @@ import tkinter as tk
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from .canvas_view import CanvasView
-    from ..server.canvas import CanvasState
+    from gui.canvas_view import CanvasView
+    from server.canvas import CanvasState
 
 
 class Toolbar(tk.Frame):

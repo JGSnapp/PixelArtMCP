@@ -5,7 +5,7 @@ from tkinter import ttk
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from ..server.canvas import CanvasState
+    from server.canvas import CanvasState
 
 try:
     from PIL import Image, ImageTk

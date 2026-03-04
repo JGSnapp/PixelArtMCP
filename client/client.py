@@ -4,7 +4,7 @@ import json
 import socket
 import sys
 
-from ..shared import port_file
+from shared import port_file
 
 
 TIMEOUT = 5.0

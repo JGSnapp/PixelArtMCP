@@ -5,7 +5,7 @@ from tkinter import colorchooser
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from ..server.canvas import CanvasState
+    from server.canvas import CanvasState
 
 try:
     from PIL import Image, ImageDraw, ImageTk
@@ -13,7 +13,8 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
-from ..shared.color import PixelColor, TRANSPARENT
+from shared.color import PixelColor, TRANSPARENT
+from ..server import rendering
 
 
 def _frame_to_pil_image(frame, alpha_override: int | None = None):
@@ -125,57 +126,16 @@ class CanvasView(tk.Frame):
 
     def _render_pil(self) -> None:
         with self.state.lock:
-            project = self.state.project
-            frame = project.active_frame
-            zoom = self._zoom
+            frame = self.state.project.active_frame
             fw, fh = frame.width, frame.height
-
-            # Base: checkerboard
-            img = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
-
-            # Onion: previous frame (blue tint at 30%)
-            if self._onion_skin and self._onion_prev and project.active_frame_index > 0:
-                prev = project.frames[project.active_frame_index - 1]
-                prev_img = _frame_to_pil_image(prev)
-                # tint blue
-                tinted = Image.new("RGBA", (fw, fh), (0, 100, 255, 0))
-                for y in range(fh):
-                    for x in range(fw):
-                        px = prev_img.getpixel((x, y))
-                        a = int(px[3] * 0.3)
-                        tinted.putpixel((x, y), (px[0], px[1] + 30, min(255, px[2] + 60), a))
-                img.alpha_composite(tinted)
-
-            # Onion: next frame (red tint at 30%)
-            if self._onion_skin and self._onion_next and project.active_frame_index < len(project.frames) - 1:
-                nxt = project.frames[project.active_frame_index + 1]
-                nxt_img = _frame_to_pil_image(nxt)
-                tinted = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
-                for y in range(fh):
-                    for x in range(fw):
-                        px = nxt_img.getpixel((x, y))
-                        a = int(px[3] * 0.3)
-                        tinted.putpixel((x, y), (min(255, px[0] + 60), px[1], px[2], a))
-                img.alpha_composite(tinted)
-
-            # Active frame
-            curr_img = _frame_to_pil_image(frame)
-            img.alpha_composite(curr_img)
-
-        # Composite over checkerboard so transparent areas are visible
-        img = _composite_with_checkerboard(img)
-
-        # Scale up (nearest neighbor = pixel-perfect)
-        img = img.resize((fw * zoom, fh * zoom), Image.NEAREST)
-
-        # Grid lines
-        if self._show_grid and zoom >= 4:
-            draw = ImageDraw.Draw(img)
-            grid_color = (80, 80, 80, 120)
-            for gx in range(0, fw * zoom, zoom):
-                draw.line([(gx, 0), (gx, fh * zoom)], fill=grid_color)
-            for gy in range(0, fh * zoom, zoom):
-                draw.line([(0, gy), (fw * zoom, gy)], fill=grid_color)
+        zoom = self._zoom
+        img = rendering.render_state_image(
+            self.state,
+            include_background=True,
+            include_checkerboard=True,
+            include_grid=self._show_grid,
+            zoom=zoom,
+        )
 
         self._photo = ImageTk.PhotoImage(img)
         self._canvas.delete("all")

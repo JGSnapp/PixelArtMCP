@@ -4,10 +4,10 @@ import copy
 import json
 from typing import Callable
 
-from ..shared.protocol import ok_response, error_response, Frame, Project
-from ..shared.color import parse_color, TRANSPARENT
-from . import drawing, export
-from .canvas import CanvasState
+from shared.protocol import ok_response, error_response, Frame, Project
+from shared.color import parse_color, TRANSPARENT
+from server import drawing, export, rendering
+from server.canvas import CanvasState
 
 # Type alias
 Handler = Callable[[CanvasState, list[str]], dict]
@@ -21,7 +21,7 @@ def register(name: str):
     return decorator
 
 
-def dispatch(state: CanvasState, cmd: str, args: list[str], frame_override: int | None = None) -> dict:
+def dispatch(state: CanvasState, cmd: str, args: list[str], frame_override: int | None = None, actor: str = "cli") -> dict:
     handler = REGISTRY.get(cmd)
     if not handler:
         return error_response("invalid_command", f"Unknown command: '{cmd}'. Run 'python pxart.py help' for a list.")
@@ -35,6 +35,9 @@ def dispatch(state: CanvasState, cmd: str, args: list[str], frame_override: int 
             state.project.active_frame_index = frame_override
 
     result = handler(state, args)
+
+    if result.get("status") == "ok":
+        state.record_activity(actor, cmd, args)
 
     if frame_override is not None:
         with state.lock:
@@ -636,6 +639,128 @@ def cmd_palette_set(state: CanvasState, args: list[str]) -> dict:
         state.project.palette = palette
         state.mark_dirty()
     return ok_response({"palette_size": len(palette)})
+
+
+@register("gradient_rect")
+def cmd_gradient_rect(state: CanvasState, args: list[str]) -> dict:
+    if len(args) < 6:
+        return error_response("invalid_args", "Usage: gradient_rect <x> <y> <w> <h> <start_color> <end_color> [direction]")
+    x, ex = _parse_int(args[0], "x")
+    if ex: return error_response("invalid_args", ex)
+    y, ey = _parse_int(args[1], "y")
+    if ey: return error_response("invalid_args", ey)
+    w, ew = _parse_int(args[2], "w")
+    if ew: return error_response("invalid_args", ew)
+    h, eh = _parse_int(args[3], "h")
+    if eh: return error_response("invalid_args", eh)
+    start_color, es = _parse_color(args[4])
+    if es: return error_response("invalid_color", es)
+    end_color, ee = _parse_color(args[5])
+    if ee: return error_response("invalid_color", ee)
+    direction = args[6].lower() if len(args) > 6 else "horizontal"
+    if direction not in {"horizontal", "vertical", "diagonal"}:
+        return error_response("invalid_args", "direction must be horizontal|vertical|diagonal")
+
+    with state.lock:
+        frame = state.active_frame
+        frame.push_undo()
+        drawing.gradient_rect(frame, x, y, w, h, start_color, end_color, direction)
+        state.mark_dirty()
+    return ok_response({"x": x, "y": y, "w": w, "h": h, "direction": direction})
+
+
+@register("set_background_reference")
+def cmd_set_background_reference(state: CanvasState, args: list[str]) -> dict:
+    if not args:
+        return error_response("invalid_args", "Usage: set_background_reference <path> [opacity] [offset_x] [offset_y]")
+    path = args[0]
+    opacity = 0.45
+    offset_x = 0
+    offset_y = 0
+    if len(args) > 1:
+        try:
+            opacity = float(args[1])
+        except ValueError:
+            return error_response("invalid_args", "opacity must be float (0..1)")
+    if len(args) > 2:
+        offset_x, ex = _parse_int(args[2], "offset_x")
+        if ex: return error_response("invalid_args", ex)
+    if len(args) > 3:
+        offset_y, ey = _parse_int(args[3], "offset_y")
+        if ey: return error_response("invalid_args", ey)
+
+    try:
+        from PIL import Image
+        image = Image.open(path).convert("RGBA")
+    except ImportError:
+        return error_response("pillow_missing", "Pillow not installed. Run: pip install pillow")
+    except Exception as exc:
+        return error_response("io_error", str(exc))
+
+    with state.lock:
+        state.set_background_reference(image, path, opacity, offset_x, offset_y)
+    return ok_response({"path": path, "opacity": opacity, "offset_x": offset_x, "offset_y": offset_y})
+
+
+@register("clear_background_reference")
+def cmd_clear_background_reference(state: CanvasState, args: list[str]) -> dict:
+    with state.lock:
+        state.clear_background_reference()
+    return ok_response({})
+
+
+@register("paste_image_region")
+def cmd_paste_image_region(state: CanvasState, args: list[str]) -> dict:
+    if len(args) != 7:
+        return error_response("invalid_args", "Usage: paste_image_region <path> <src_x> <src_y> <w> <h> <dest_x> <dest_y>")
+    path = args[0]
+    src_x, ex = _parse_int(args[1], "src_x")
+    if ex: return error_response("invalid_args", ex)
+    src_y, ey = _parse_int(args[2], "src_y")
+    if ey: return error_response("invalid_args", ey)
+    w, ew = _parse_int(args[3], "w")
+    if ew: return error_response("invalid_args", ew)
+    h, eh = _parse_int(args[4], "h")
+    if eh: return error_response("invalid_args", eh)
+    dest_x, edx = _parse_int(args[5], "dest_x")
+    if edx: return error_response("invalid_args", edx)
+    dest_y, edy = _parse_int(args[6], "dest_y")
+    if edy: return error_response("invalid_args", edy)
+
+    try:
+        from PIL import Image
+        image = Image.open(path).convert("RGBA")
+        crop = image.crop((src_x, src_y, src_x + w, src_y + h))
+    except ImportError:
+        return error_response("pillow_missing", "Pillow not installed. Run: pip install pillow")
+    except Exception as exc:
+        return error_response("io_error", str(exc))
+
+    with state.lock:
+        frame = state.active_frame
+        frame.push_undo()
+        changed = drawing.paste_rgba_image(frame, crop, dest_x, dest_y)
+        state.mark_dirty()
+    return ok_response({"pixels_changed": changed, "dest_x": dest_x, "dest_y": dest_y})
+
+
+@register("capture_screenshot")
+def cmd_capture_screenshot(state: CanvasState, args: list[str]) -> dict:
+    if not args:
+        return error_response("invalid_args", "Usage: capture_screenshot <path> [zoom]")
+    path = args[0]
+    zoom = 8
+    if len(args) > 1:
+        zoom, ez = _parse_int(args[1], "zoom")
+        if ez: return error_response("invalid_args", ez)
+
+    try:
+        result_path = rendering.save_state_screenshot(state, path, zoom=zoom)
+    except ImportError:
+        return error_response("pillow_missing", "Pillow not installed. Run: pip install pillow")
+    except Exception as exc:
+        return error_response("io_error", str(exc))
+    return ok_response({"path": result_path})
 
 
 # ─────────────────────────── STOP ──────────────────────────────────

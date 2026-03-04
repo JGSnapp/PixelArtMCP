@@ -5,9 +5,9 @@ from tkinter import colorchooser
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from ..server.canvas import CanvasState
+    from server.canvas import CanvasState
 
-from ..shared.color import PixelColor, parse_color, NAMED_COLORS
+from shared.color import PixelColor, parse_color, NAMED_COLORS
 
 
 DEFAULT_PALETTE = [
@@ -65,7 +65,7 @@ class PalettePanel(tk.Frame):
         # Init with default palette
         with self.state.lock:
             if not self.state.project.palette:
-                from ..shared.color import parse_color
+                from shared.color import parse_color
                 self.state.project.palette = [
                     parse_color(c) for c in DEFAULT_PALETTE if parse_color(c)
                 ]

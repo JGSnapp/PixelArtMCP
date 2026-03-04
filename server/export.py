@@ -3,8 +3,8 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from ..shared.protocol import Project, Frame
-from ..shared.color import PixelColor
+from shared.protocol import Project, Frame
+from shared.color import PixelColor
 
 
 def _frame_to_pil(frame: Frame):
