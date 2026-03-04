@@ -6,6 +6,7 @@ Claude draws, you watch in real time.
 Usage:
   python pxart.py start [--size 64x64] [--fps 12] [--name NAME] [--load FILE]
   python pxart.py tui                        ← terminal UI (interactive editor)
+  python pxart.py mcp [--config FILE] [--gui] [--size 64x64] [--name NAME] [--load FILE]
   python pxart.py stop
   python pxart.py status
   python pxart.py set_pixel <x> <y> <color>
@@ -16,6 +17,11 @@ Usage:
   python pxart.py fill <x> <y> <color>
   python pxart.py circle <cx> <cy> <r> <color>
   python pxart.py fill_circle <cx> <cy> <r> <color>
+  python pxart.py gradient_rect <x> <y> <w> <h> <start_color> <end_color> [direction]
+  python pxart.py set_background_reference <path> [opacity] [offset_x] [offset_y]
+  python pxart.py clear_background_reference
+  python pxart.py paste_image_region <path> <src_x> <src_y> <w> <h> <dest_x> <dest_y>
+  python pxart.py capture_screenshot <path> [zoom]
   python pxart.py clear [color]
   python pxart.py get_pixel <x> <y>
   python pxart.py undo [N]
@@ -100,9 +106,9 @@ def _cmd_run(argv: list[str]) -> None:
     except (ValueError, AttributeError):
         sys.exit(1)
 
-    from pxart.server.canvas import CanvasState
-    from pxart.server.daemon import start_server
-    from pxart.shared import port_file
+    from server.canvas import CanvasState
+    from server.daemon import start_server
+    from shared import port_file
 
     if args.load:
         try:
@@ -117,7 +123,7 @@ def _cmd_run(argv: list[str]) -> None:
 
     # GUI on main thread
     try:
-        from pxart.gui.preview import PreviewWindow
+        from gui.preview import PreviewWindow
         PreviewWindow(state).run()
     except Exception as exc:
         import traceback
@@ -128,6 +134,17 @@ def _cmd_run(argv: list[str]) -> None:
             server.shutdown()
         except Exception:
             pass
+
+
+def _cmd_mcp(argv: list[str]) -> None:
+    """Run MCP stdio server."""
+    from pxart_mcp import main as mcp_main
+    old_argv = sys.argv
+    try:
+        sys.argv = [old_argv[0]] + argv
+        mcp_main()
+    finally:
+        sys.argv = old_argv
 
 
 def _cmd_client(cmd: str, args: list[str]) -> None:
@@ -148,7 +165,7 @@ def _cmd_client(cmd: str, args: list[str]) -> None:
             filtered_args.append(args[i])
             i += 1
 
-    from pxart.client.client import run_command
+    from client.client import run_command
     exit_code = run_command(cmd, filtered_args, frame=frame_override)
     sys.exit(exit_code)
 
@@ -167,6 +184,8 @@ def main() -> None:
         _cmd_start(rest)
     elif cmd == "_run":
         _cmd_run(rest)
+    elif cmd == "mcp":
+        _cmd_mcp(rest)
     else:
         _cmd_client(cmd, rest)
 

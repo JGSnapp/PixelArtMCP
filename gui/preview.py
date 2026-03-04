@@ -4,14 +4,14 @@ import tkinter as tk
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..server.canvas import CanvasState
+    from server.canvas import CanvasState
 
-from .canvas_view import CanvasView
-from .frame_panel import FramePanel
-from .palette_panel import PalettePanel
-from .toolbar import Toolbar
-from ..shared.color import PixelColor
-from .. import server
+from gui.canvas_view import CanvasView
+from gui.frame_panel import FramePanel
+from gui.palette_panel import PalettePanel
+from gui.toolbar import Toolbar
+from shared.color import PixelColor
+import server
 
 
 POLL_INTERVAL_MS = 50  # 20 Hz
@@ -105,6 +105,11 @@ class PreviewWindow:
             font=("Consolas", 8))
         self._status_cursor_lbl.pack(side=tk.LEFT, padx=8)
 
+        self._status_activity_lbl = tk.Label(
+            status_frame, text="", bg="#060614", fg="#88aacc",
+            font=("Consolas", 8), anchor="w")
+        self._status_activity_lbl.pack(side=tk.LEFT, padx=8)
+
         # Initial render
         self._full_refresh()
 
@@ -140,8 +145,10 @@ class PreviewWindow:
             fidx = p.active_frame_index
             total = len(p.frames)
             w, h = p.width, p.height
+            activity = self.state.last_activity
         self._status_frame_lbl.configure(text=f"Frame {fidx + 1}/{total}")
         self._status_size_lbl.configure(text=f"{w}×{h}")
+        self._status_activity_lbl.configure(text=activity[:120])
 
     # ── Event handlers ────────────────────────────────────────────────
 
@@ -157,7 +164,7 @@ class PreviewWindow:
         """User clicked on canvas — draw with foreground color via TCP."""
         color = self._palette.current_color
         # Send via TCP so undo history is tracked
-        from ..client.client import send_command
+        from client.client import send_command
         try:
             send_command("set_pixel", [str(x), str(y), color.to_hex()])
         except SystemExit:
@@ -170,7 +177,7 @@ class PreviewWindow:
         pass  # dirty flag set by toolbar
 
     def _on_fps_change(self, fps: int) -> None:
-        from ..client.client import send_command
+        from client.client import send_command
         try:
             send_command("set_fps", [str(fps)])
         except SystemExit:
@@ -179,28 +186,28 @@ class PreviewWindow:
     # ── Frame panel callbacks ──────────────────────────────────────────
 
     def _cmd_new_frame(self) -> None:
-        from ..client.client import send_command
+        from client.client import send_command
         try:
             send_command("new_frame", [])
         except SystemExit:
             pass
 
     def _cmd_dup_frame(self) -> None:
-        from ..client.client import send_command
+        from client.client import send_command
         try:
             send_command("dup_frame", [])
         except SystemExit:
             pass
 
     def _cmd_del_frame(self) -> None:
-        from ..client.client import send_command
+        from client.client import send_command
         try:
             send_command("del_frame", [])
         except SystemExit:
             pass
 
     def _cmd_select_frame(self, idx: int) -> None:
-        from ..client.client import send_command
+        from client.client import send_command
         try:
             send_command("set_active_frame", [str(idx)])
         except SystemExit:

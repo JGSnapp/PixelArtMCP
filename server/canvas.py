@@ -5,8 +5,8 @@ import json
 import threading
 from pathlib import Path
 
-from ..shared.protocol import Project, Frame
-from ..shared.color import PixelColor, TRANSPARENT
+from shared.protocol import Project, Frame
+from shared.color import PixelColor, TRANSPARENT
 
 
 class CanvasState:
@@ -17,6 +17,8 @@ class CanvasState:
         self.lock = threading.Lock()
         self.dirty = threading.Event()  # set when GUI needs to redraw
         self._save_path: str | None = None
+        self.background_reference: dict | None = None
+        self.last_activity: str = ""
 
     @classmethod
     def new(cls, name: str = "untitled", width: int = 64, height: int = 64, fps: int = 12) -> "CanvasState":
@@ -40,6 +42,25 @@ class CanvasState:
 
     def mark_dirty(self) -> None:
         self.dirty.set()
+
+    def set_background_reference(self, image, path: str, opacity: float, offset_x: int, offset_y: int) -> None:
+        self.background_reference = {
+            "image": image,
+            "path": path,
+            "opacity": max(0.0, min(1.0, opacity)),
+            "offset_x": offset_x,
+            "offset_y": offset_y,
+        }
+        self.mark_dirty()
+
+    def clear_background_reference(self) -> None:
+        self.background_reference = None
+        self.mark_dirty()
+
+    def record_activity(self, actor: str, command: str, args: list[str]) -> None:
+        joined = " ".join(args)
+        self.last_activity = f"[{actor}] {command} {joined}".strip()
+        self.mark_dirty()
 
     # ------------------------------------------------------------------
     # Persistence
